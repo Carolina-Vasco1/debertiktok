@@ -59,6 +59,20 @@
   .concl { max-width: 68ch; }
   ul.lim { margin: 8px 0 0; padding-left: 20px; }
   .aviso { margin-top: 28px; color: var(--muted); font-size: .9rem; border-left: 3px solid var(--line); padding-left: 12px; }
+  .runbox { margin: 18px 0 22px; }
+  .runbox p { margin: 0 0 12px; }
+  .runbox label { display: block; font-weight: 500; margin-bottom: 4px; }
+  .runbox select { width: 100%; margin-bottom: 12px; }
+  .runbox input { width: 100%; font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 8px; margin-bottom: 6px; }
+  .runbox input:focus-visible { outline: 3px solid rgba(15,110,99,.3); border-color: var(--accent); }
+  button { font: inherit; font-weight: 600; cursor: pointer; background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 0 22px; min-height: 46px; }
+  button:hover { background: #0B5A51; }
+  button:disabled { background: #7FA8A2; cursor: not-allowed; }
+  button:focus-visible { outline: 3px solid rgba(15,110,99,.45); outline-offset: 2px; }
+  .status.busy { display: flex; gap: 10px; align-items: center; }
+  .spinner { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .9s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
   [hidden] { display: none !important; }
   @media (max-width: 560px) { .chart { grid-template-columns: 1fr; gap: 4px 0; } .chart .name { margin-top: 10px; } .scale { grid-column: 1; } }
 </style>
@@ -69,14 +83,22 @@
   <p class="lead">Estimación de rasgos a partir de las descripciones del perfil, hecha con Gemini. Es una impresión sobre contenido público, no un diagnóstico.</p>
   <p><a href="/">Volver al extractor</a></p>
 
-  <div class="picker">
-    <label for="file">Análisis:</label>
-    <select id="file"></select>
+  <div class="box runbox">
+    <label for="csv">CSV a analizar</label>
+    <select id="csv"></select>
+    <p id="run-info">Comprobando los CSV…</p>
+    <div id="keyrow" hidden>
+      <label for="key">Clave de API de Gemini</label>
+      <input id="key" type="password" autocomplete="off" placeholder="Pega tu clave aquí">
+      <p class="hint">No se guarda: solo se usa para este análisis. También puedes definir GEMINI_API_KEY antes de iniciar la app.</p>
+    </div>
+    <button id="run-btn" type="button" disabled>Analizar este CSV</button>
   </div>
 
   <div id="status" class="status" hidden></div>
 
   <section id="results" hidden>
+    <p class="hint" id="analizado"></p>
     <h2>Rasgos Big Five</h2>
     <p class="hint">Puntaje de 0 a 100. El tono de la barra indica la confianza de la estimación.</p>
     <div class="box">
@@ -126,10 +148,12 @@
   }
   const clamp = (v) => Math.max(0, Math.min(100, Number(v) || 0));
 
-  function setStatus(text, error = false) {
+  function setStatus(text, error = false, busy = false) {
     const s = $("status");
-    s.textContent = text;
-    s.className = "status" + (error ? " error" : "");
+    s.className = "status" + (error ? " error" : "") + (busy ? " busy" : "");
+    s.replaceChildren();
+    if (busy) s.append(el("span", { className: "spinner" }));
+    s.append(el("span", { textContent: text }));
     s.hidden = false;
   }
 
@@ -155,6 +179,7 @@
   }
 
   function render(d) {
+    $("analizado").textContent = "Datos analizados: " + (d.archivo_csv || "—");
     // Big Five
     const chart = $("big5"); chart.replaceChildren();
     const ev = $("evidence"); ev.replaceChildren();
@@ -204,17 +229,78 @@
     } catch (e) { setStatus(e.message, true); }
   }
 
+  let csvs = [];
+  const stemOf = (n) => n.replace(/\.csv$/i, "");
+  const analysisName = (n) => "analisis_" + stemOf(n) + ".json";
+
+  function csvLabel(c) {
+    const m = c.name.match(/^tiktok_(.+)_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.csv$/);
+    const base = m ? `@${m[1]} · ${m[4]}/${m[3]}/${m[2]} ${m[5]}:${m[6]}` : c.name;
+    return base + (c.has_analysis ? " · con análisis" : " · sin analizar");
+  }
+  const selectedCsv = () => csvs.find((c) => c.name === $("csv").value);
+
+  function updateRunInfo() {
+    const c = selectedCsv();
+    if (!c) {
+      $("run-info").textContent = "Aún no hay ningún CSV. Primero extrae un perfil en la página principal.";
+      $("run-btn").disabled = true;
+      return;
+    }
+    $("run-info").textContent = "Archivo: " + c.name + (csvs[0].name === c.name ? " (el más reciente)" : "");
+    $("run-btn").disabled = false;
+  }
+
+  async function loadEstado(keepSelection) {
+    const st = await (await fetch("/api/estado", { cache: "no-store" })).json();
+    csvs = st.csvs || [];
+    const prev = keepSelection ? $("csv").value : null;
+    $("csv").replaceChildren(...csvs.map((c) => el("option", { value: c.name, textContent: csvLabel(c) })));
+    if (prev && csvs.some((c) => c.name === prev)) $("csv").value = prev;
+    $("keyrow").hidden = st.has_env_key;
+    updateRunInfo();
+  }
+
+  async function showForSelected() {
+    const c = selectedCsv();
+    $("results").hidden = true;
+    if (!c) return setStatus("Aún no hay ningún CSV.");
+    if (c.has_analysis) return load(analysisName(c.name));
+    setStatus("Este CSV todavía no tiene análisis. Pulsa «Analizar este CSV».");
+  }
+
+  $("csv").addEventListener("change", () => { updateRunInfo(); showForSelected(); });
+
+  $("run-btn").addEventListener("click", async () => {
+    const c = selectedCsv();
+    if (!c) return;
+    const btn = $("run-btn");
+    btn.disabled = true;
+    $("results").hidden = true;
+    setStatus("Analizando " + c.name + " con Gemini. Puede tardar un minuto o más si el servicio está ocupado…", false, true);
+    try {
+      const res = await fetch("/api/analizar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: $("key").value.trim(), csv: c.name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error desconocido.");
+      $("key").value = "";
+      await loadEstado(true);
+      await showForSelected();
+    } catch (e) {
+      setStatus(e.message, true);
+    } finally {
+      btn.disabled = !selectedCsv();
+    }
+  });
+
   (async function init() {
     try {
-      const files = await (await fetch("/api/analisis")).json();
-      if (!files.length) {
-        $("file").disabled = true;
-        return setStatus("Aún no hay análisis. Ejecuta «python analizar_big5.py» y recarga esta página.");
-      }
-      $("file").replaceChildren(...files.map((f) => el("option", { value: f, textContent: label(f) })));
-      $("file").addEventListener("change", (e) => load(e.target.value));
-      load(files[0]);
-    } catch (e) { setStatus("No se pudo cargar la lista de análisis.", true); }
+      await loadEstado(false);
+      await showForSelected();
+    } catch (e) { setStatus("No se pudo cargar la información de la página.", true); }
   })();
 </script>
 </body>

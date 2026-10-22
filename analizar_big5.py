@@ -61,18 +61,44 @@ Reglas estrictas:
 }"""
 
 
+class AnalysisError(Exception):
+    """Error esperado (se muestra tal cual al usuario)."""
+
+
+def csv_stamp(path):
+    """Fecha del CSV: la del nombre (tiktok_usuario_AAAAMMDD_HHMMSS) o, si no hay, la de modificación."""
+    m = re.search(r"(\d{8})_(\d{6})", path.stem)
+    return m.group(1) + m.group(2) if m else time.strftime("%Y%m%d%H%M%S", time.localtime(path.stat().st_mtime))
+
+
+def list_csvs():
+    """Todos los CSV de output/, del más reciente al más antiguo."""
+    return sorted(OUTPUT_DIR.glob("*.csv"), key=csv_stamp, reverse=True)
+
+
 def latest_csv():
-    files = sorted(OUTPUT_DIR.glob("tiktok_*.csv"), key=lambda p: p.stat().st_mtime)
+    files = list_csvs()
     if not files:
-        sys.exit("No hay CSV en output/. Primero ejecuta una extracción.")
-    return files[-1]
+        raise AnalysisError("No hay CSV en output/. Primero ejecuta una extracción.")
+    return files[0]
+
+
+def resolve_csv(csv_path):
+    if not csv_path:
+        return latest_csv()
+    p = Path(csv_path)
+    if not p.is_file():
+        p = OUTPUT_DIR / p.name
+    if not p.is_file():
+        raise AnalysisError(f"No se encontró el CSV «{Path(csv_path).name}».")
+    return p
 
 
 def read_csv(path):
     with open(path, newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
     if not rows:
-        sys.exit("El CSV está vacío.")
+        raise AnalysisError("El CSV está vacío.")
     return rows
 
 
@@ -108,9 +134,8 @@ def is_temporary(msg):
                                 "500", "overloaded", "high demand", "timeout", "deadline"))
 
 
-def analyze(content):
-    key = os.environ.get("GEMINI_API_KEY") or getpass.getpass("Clave de API de Gemini (no se muestra): ")
-    client = genai.Client(api_key=key)
+def analyze(content, api_key):
+    client = genai.Client(api_key=api_key)
     config = types.GenerateContentConfig(
         system_instruction=SYSTEM,
         response_mime_type="application/json",
@@ -132,12 +157,12 @@ def analyze(content):
                 last_msg = msg
                 low = msg.lower()
                 if "api key" in low or "401" in msg or "403" in msg or "permission" in low:
-                    sys.exit("La clave de API no es válida o no tiene permiso.")
+                    raise AnalysisError("La clave de API no es válida o no tiene permiso.")
                 if "404" in msg or "not found" in low:
                     print(f"  El modelo {model} no está disponible; pruebo con otro.")
                     break
                 if not is_temporary(msg):
-                    sys.exit(f"Error al llamar a Gemini: {msg}")
+                    raise AnalysisError(f"Error al llamar a Gemini: {msg}")
             if attempt < len(RETRY_WAITS):
                 wait = RETRY_WAITS[attempt]
                 print(f"  Gemini ocupado; reintento en {wait} s...")
@@ -145,7 +170,7 @@ def analyze(content):
         else:
             print(f"  {model} sigue sin responder; pruebo con otro modelo.")
 
-    sys.exit(f"No se pudo obtener respuesta de Gemini tras varios intentos: {last_msg}\n"
+    raise AnalysisError(f"No se pudo obtener respuesta de Gemini tras varios intentos: {last_msg}\n"
              "Es probable que haya alta demanda; vuelve a intentarlo en unos minutos.")
 
 
@@ -172,18 +197,31 @@ def to_markdown(data, user):
     return "\n".join(out)
 
 
-def main():
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else latest_csv()
+def run_analysis(csv_path=None, api_key=None):
+    """Analiza el CSV indicado (o el más reciente) y guarda .md y .json en output/."""
+    path = resolve_csv(csv_path)
     print(f"Analizando {path.name} con {MODEL}...")
     rows = read_csv(path)
-    data = analyze(build_input(rows))
+    data = analyze(build_input(rows), api_key)
+    data["archivo_csv"] = path.name
 
     report = to_markdown(data, rows[0]["username"])
     base = OUTPUT_DIR / f"analisis_{path.stem}"
     base.with_suffix(".json").write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     base.with_suffix(".md").write_text(report, encoding="utf-8")
-    print("\n" + report)
-    print(f"\nGuardado en {base.with_suffix('.md').name} y {base.with_suffix('.json').name}")
+    return {"csv": path.name, "json": base.with_suffix(".json").name,
+            "md": base.with_suffix(".md").name, "report": report}
+
+
+def main():
+    csv_path = sys.argv[1] if len(sys.argv) > 1 else None
+    key = os.environ.get("GEMINI_API_KEY") or getpass.getpass("Clave de API de Gemini (no se muestra): ")
+    try:
+        result = run_analysis(csv_path, key)
+    except AnalysisError as e:
+        sys.exit(str(e))
+    print("\n" + result["report"])
+    print(f"\nGuardado en {result['md']} y {result['json']}")
 
 
 if __name__ == "__main__":
