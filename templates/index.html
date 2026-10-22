@@ -48,6 +48,7 @@
   button:hover { background: #0B5A51; }
   button:focus-visible, a:focus-visible, input[type=checkbox]:focus-visible { outline: 3px solid rgba(15,110,99,.45); outline-offset: 2px; }
   button:disabled { background: #7FA8A2; cursor: progress; }
+  .navlink { color: var(--accent); font-weight: 500; }
   .opt { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--muted); font-size: .95rem; }
 
   .status { margin-top: 20px; padding: 12px 14px; border-radius: 8px; }
@@ -83,6 +84,8 @@
 <main>
   <h1>Extractor de perfiles de TikTok</h1>
   <p class="lead">Escribe el usuario de un perfil público. Obtendrás sus datos básicos, la descripción de sus primeros 10 videos y los primeros 5 comentarios de cada uno.</p>
+
+  <p><a class="navlink" href="/analisis">Ver análisis Big Five</a></p>
 
   <form id="form" autocomplete="off">
     <div class="row">

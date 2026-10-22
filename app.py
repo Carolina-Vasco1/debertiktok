@@ -1,8 +1,10 @@
 """Frontend local (Flask) para el extractor de perfiles de TikTok."""
+import json
+import re
 import threading
 import webbrowser
 
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 from scraper import OUTPUT_DIR, ScraperError, scrape_profile
 
@@ -35,6 +37,27 @@ def api_scrape():
         busy.release()
 
 
+@app.get("/analisis")
+def analisis_page():
+    return render_template("analisis.html")
+
+
+@app.get("/api/analisis")
+def list_analisis():
+    files = sorted(OUTPUT_DIR.glob("analisis_*.json"), key=lambda f: f.stat().st_mtime, reverse=True)
+    return jsonify([f.name for f in files])
+
+
+@app.get("/api/analisis/<name>")
+def get_analisis(name):
+    if not re.fullmatch(r"analisis_[\w.\-]+\.json", name):
+        abort(400)
+    path = OUTPUT_DIR / name
+    if not path.is_file():
+        abort(404)
+    return jsonify(json.loads(path.read_text(encoding="utf-8")))
+
+
 @app.get("/download/<path:filename>")
 def download(filename):
     return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
@@ -43,3 +66,4 @@ def download(filename):
 if __name__ == "__main__":
     threading.Timer(1.0, lambda: webbrowser.open("http://127.0.0.1:5000")).start()
     app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
+    

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Análisis Big Five</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #EEF1EC; --ink: #1B2A2F; --muted: #5B6B6E; --panel: #FFFFFF; --line: #D3DAD3;
+    --accent: #0F6E63; --accent-mid: #5FA39A; --accent-low: #A9CBC6;
+    --emo: #8A5A2B; --danger: #A33A1B; --danger-bg: #FBEDE7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 "Instrument Sans", "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 48px 20px 90px; }
+  h1 { font-size: 2rem; line-height: 1.15; margin: 0 0 8px; font-weight: 600; letter-spacing: -0.01em; }
+  h2 { font-size: 1.15rem; margin: 40px 0 6px; font-weight: 600; }
+  .lead, .hint { color: var(--muted); margin: 0 0 20px; max-width: 62ch; }
+  .hint { font-size: .92rem; margin: 0 0 14px; }
+  a { color: var(--accent); font-weight: 500; }
+  a:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid rgba(15,110,99,.45); outline-offset: 2px; }
+
+  .picker { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  select { font: inherit; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; max-width: 100%; }
+
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; }
+  .status { padding: 12px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); }
+  .status.error { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+
+  /* barras */
+  .chart { display: grid; grid-template-columns: 11rem 1fr; gap: 14px 16px; align-items: center; }
+  .chart .name { font-weight: 500; line-height: 1.25; }
+  .chart .name small { display: block; color: var(--muted); font-weight: 400; font-size: .82rem; }
+  .track {
+    position: relative; height: 30px; border-radius: 6px; background: #F1F4F0;
+    background-image: linear-gradient(to right, var(--line) 1px, transparent 1px);
+    background-size: 25% 100%;
+  }
+  .fill { height: 100%; border-radius: 6px; background: var(--accent); min-width: 2px; }
+  .fill.media { background: var(--accent-mid); }
+  .fill.baja { background: var(--accent-low); }
+  .fill.emo { background: var(--emo); }
+  .val { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-weight: 600; font-size: .9rem; }
+  .val.inside { color: #fff; }
+  .scale { grid-column: 2; display: flex; justify-content: space-between; color: var(--muted); font-size: .78rem; margin-top: -6px; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: .85rem; margin: 14px 0 0; }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--accent); font-weight: 500; }
+  details ul { margin: 8px 0 0; padding-left: 20px; }
+  .rasgo { padding: 12px 0; border-top: 1px solid var(--line); }
+  .rasgo:first-child { border-top: 0; }
+  .rasgo h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+  .rasgo p { margin: 2px 0 0; color: var(--muted); font-size: .92rem; }
+  .concl { max-width: 68ch; }
+  ul.lim { margin: 8px 0 0; padding-left: 20px; }
+  .aviso { margin-top: 28px; color: var(--muted); font-size: .9rem; border-left: 3px solid var(--line); padding-left: 12px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 560px) { .chart { grid-template-columns: 1fr; gap: 4px 0; } .chart .name { margin-top: 10px; } .scale { grid-column: 1; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Análisis Big Five</h1>
+  <p class="lead">Estimación de rasgos a partir de las descripciones del perfil, hecha con Gemini. Es una impresión sobre contenido público, no un diagnóstico.</p>
+  <p><a href="/">Volver al extractor</a></p>
+
+  <div class="picker">
+    <label for="file">Análisis:</label>
+    <select id="file"></select>
+  </div>
+
+  <div id="status" class="status" hidden></div>
+
+  <section id="results" hidden>
+    <h2>Rasgos Big Five</h2>
+    <p class="hint">Puntaje de 0 a 100. El tono de la barra indica la confianza de la estimación.</p>
+    <div class="box">
+      <div class="chart" id="big5"></div>
+      <div class="legend">
+        <span style="--c: var(--accent)">Confianza alta</span>
+        <span style="--c: var(--accent-mid)">Confianza media</span>
+        <span style="--c: var(--accent-low)">Confianza baja</span>
+      </div>
+    </div>
+
+    <h2>Evidencia por rasgo</h2>
+    <div class="box" id="evidence"></div>
+
+    <h2>Tono emocional del contenido</h2>
+    <p class="hint" id="emo-resumen"></p>
+    <div class="box"><div class="chart" id="emo"></div></div>
+
+    <h2>Reacción de la audiencia</h2>
+    <div class="box"><p id="aud" style="margin:0"></p></div>
+
+    <h2>Conclusión</h2>
+    <div class="box"><p class="concl" id="concl" style="margin:0"></p></div>
+
+    <h2>Limitaciones</h2>
+    <ul class="lim" id="lim"></ul>
+
+    <p class="aviso">Impresión automática basada en pocos textos públicos. No describe el estado emocional real de la persona ni sustituye una evaluación psicológica.</p>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const TRAITS = [
+    ["apertura", "Apertura", "curiosidad, creatividad"],
+    ["responsabilidad", "Responsabilidad", "orden, disciplina"],
+    ["extraversion", "Extraversión", "sociabilidad, energía"],
+    ["amabilidad", "Amabilidad", "empatía, cooperación"],
+    ["neuroticismo", "Neuroticismo", "sensibilidad al estrés"],
+  ];
+
+  function el(tag, props = {}, ...children) {
+    const n = document.createElement(tag);
+    Object.assign(n, props);
+    children.forEach((c) => n.append(c));
+    return n;
+  }
+  const clamp = (v) => Math.max(0, Math.min(100, Number(v) || 0));
+
+  function setStatus(text, error = false) {
+    const s = $("status");
+    s.textContent = text;
+    s.className = "status" + (error ? " error" : "");
+    s.hidden = false;
+  }
+
+  function bar(label, sub, value, cls, conf) {
+    const v = clamp(value);
+    const fill = el("div", { className: "fill " + cls });
+    fill.style.width = v + "%";
+    const num = el("span", { className: "val" + (v > 88 ? " inside" : ""), textContent: Math.round(v) });
+    const track = el("div", { className: "track", role: "meter" });
+    track.setAttribute("aria-valuemin", "0");
+    track.setAttribute("aria-valuemax", "100");
+    track.setAttribute("aria-valuenow", String(Math.round(v)));
+    track.setAttribute("aria-label", label + (conf ? ", confianza " + conf : ""));
+    track.append(fill, num);
+    const name = el("div", { className: "name", textContent: label });
+    if (sub) name.append(el("small", { textContent: sub }));
+    return [name, track];
+  }
+
+  function scale(parent) {
+    parent.append(el("div", { className: "scale" },
+      ...["0", "25", "50", "75", "100"].map((t) => el("span", { textContent: t }))));
+  }
+
+  function render(d) {
+    // Big Five
+    const chart = $("big5"); chart.replaceChildren();
+    const ev = $("evidence"); ev.replaceChildren();
+    TRAITS.forEach(([key, label, sub]) => {
+      const t = (d.big_five || {})[key] || {};
+      const conf = ["alta", "media", "baja"].includes(t.confianza) ? t.confianza : "baja";
+      chart.append(...bar(label, sub, t.puntaje, conf === "alta" ? "" : conf, conf));
+      const block = el("div", { className: "rasgo" },
+        el("h3", { textContent: `${label}: ${Math.round(clamp(t.puntaje))}/100` }),
+        el("p", { textContent: "Confianza " + conf }));
+      const list = (t.evidencia || []).filter(Boolean);
+      if (list.length) {
+        block.append(el("details", {}, el("summary", { textContent: "Ver evidencia" }),
+          el("ul", {}, ...list.map((x) => el("li", { textContent: x })))));
+      }
+      ev.append(block);
+    });
+    scale(chart);
+
+    // Emociones
+    const tono = d.tono_emocional_del_contenido || {};
+    $("emo-resumen").textContent = (tono.predominante ? "Predominante: " + tono.predominante + ". " : "") + (tono.resumen || "");
+    const emo = $("emo"); emo.replaceChildren();
+    (tono.emociones || []).forEach((e) => emo.append(...bar(e.emocion || "—", "", e.intensidad, "emo")));
+    if ((tono.emociones || []).length) scale(emo);
+
+    // Texto
+    const a = d.reaccion_de_la_audiencia || {};
+    $("aud").textContent = [a.tono ? "Tono: " + a.tono + "." : "", a.resumen || ""].join(" ").trim() || "Sin datos.";
+    $("concl").textContent = d.conclusion || "Sin conclusión.";
+    $("lim").replaceChildren(...(d.limitaciones || []).map((x) => el("li", { textContent: x })));
+    $("results").hidden = false;
+  }
+
+  function label(name) {
+    const m = name.match(/^analisis_tiktok_(.+)_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.json$/);
+    return m ? `@${m[1]} · ${m[4]}/${m[3]}/${m[2]} ${m[5]}:${m[6]}` : name;
+  }
+
+  async function load(name) {
+    $("results").hidden = true;
+    try {
+      const res = await fetch("/api/analisis/" + encodeURIComponent(name));
+      if (!res.ok) throw new Error("No se pudo leer el archivo de análisis.");
+      render(await res.json());
+      $("status").hidden = true;
+    } catch (e) { setStatus(e.message, true); }
+  }
+
+  (async function init() {
+    try {
+      const files = await (await fetch("/api/analisis")).json();
+      if (!files.length) {
+        $("file").disabled = true;
+        return setStatus("Aún no hay análisis. Ejecuta «python analizar_big5.py» y recarga esta página.");
+      }
+      $("file").replaceChildren(...files.map((f) => el("option", { value: f, textContent: label(f) })));
+      $("file").addEventListener("change", (e) => load(e.target.value));
+      load(files[0]);
+    } catch (e) { setStatus("No se pudo cargar la lista de análisis.", true); }
+  })();
+</script>
+</body>
+</html>
