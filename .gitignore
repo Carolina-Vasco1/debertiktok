@@ -1,0 +1,12 @@
+@"
+cookies.json
+*.cookies.json
+output/
+*.csv
+debug_*.png
+venv/
+.venv/
+__pycache__/
+*.pyc
+.vscode/
+"@ | Set-Content -Encoding ascii .gitignore
