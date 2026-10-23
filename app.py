@@ -6,8 +6,9 @@ import threading
 import time
 import webbrowser
 
-from flask import Flask, abort, jsonify, render_template, request, send_from_directory
+from flask import Flask, Response, abort, jsonify, render_template, request, send_from_directory
 
+from informe import build_report
 from scraper import OUTPUT_DIR, ScraperError, scrape_profile
 
 app = Flask(__name__)
@@ -111,6 +112,23 @@ def api_analizar():
         return jsonify(error=f"Error inesperado en el análisis: {type(e).__name__}"), 500
     finally:
         analysis_busy.release()
+
+
+@app.get("/informe/<csv_name>")
+def informe(csv_name):
+    """Informe HTML del análisis de un CSV. Con ?descargar=1 se descarga como archivo."""
+    if not re.fullmatch(r"[\w.\-]+\.csv", csv_name):
+        abort(400)
+    csv_path = OUTPUT_DIR / csv_name
+    json_path = OUTPUT_DIR / f"analisis_{csv_path.stem}.json"
+    if not csv_path.is_file() or not json_path.is_file():
+        abort(404)
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    cliente = request.args.get("cliente", "").strip()[:80]
+    resp = Response(build_report(data, csv_path, cliente), mimetype="text/html")
+    if request.args.get("descargar"):
+        resp.headers["Content-Disposition"] = f'attachment; filename="informe_{csv_path.stem}.html"'
+    return resp
 
 
 @app.get("/download/<path:filename>")

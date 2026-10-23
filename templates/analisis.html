@@ -62,6 +62,13 @@
   .runbox { margin: 18px 0 22px; }
   .runbox p { margin: 0 0 12px; }
   .runbox label { display: block; font-weight: 500; margin-bottom: 4px; }
+  .reportbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin: 0 0 18px; }
+  .reportbar .f { flex: 1; min-width: 200px; }
+  .reportbar label { display: block; font-weight: 500; margin-bottom: 4px; }
+  .reportbar input { width: 100%; font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 8px; }
+  a.btn { display: inline-flex; align-items: center; min-height: 46px; padding: 0 18px; border-radius: 8px; font-weight: 600; text-decoration: none; background: var(--accent); color: #fff; }
+  a.btn.alt { background: var(--panel); color: var(--accent); border: 1.5px solid var(--accent); }
+  a.btn:hover { filter: brightness(.95); }
   .runbox select { width: 100%; margin-bottom: 12px; }
   .runbox input { width: 100%; font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 8px; margin-bottom: 6px; }
   .runbox input:focus-visible { outline: 3px solid rgba(15,110,99,.3); border-color: var(--accent); }
@@ -98,6 +105,14 @@
   <div id="status" class="status" hidden></div>
 
   <section id="results" hidden>
+    <div class="box reportbar">
+      <div class="f">
+        <label for="cliente">Informe para (opcional)</label>
+        <input id="cliente" maxlength="80" placeholder="Nombre del cliente o negocio" autocomplete="off">
+      </div>
+      <a class="btn" id="rep-view" target="_blank" rel="noopener">Ver informe</a>
+      <a class="btn alt" id="rep-dl">Descargar HTML</a>
+    </div>
     <p class="hint" id="analizado"></p>
     <h2>Rasgos Big Five</h2>
     <p class="hint">Puntaje de 0 a 100. El tono de la barra indica la confianza de la estimación.</p>
@@ -225,9 +240,20 @@
       const res = await fetch("/api/analisis/" + encodeURIComponent(name));
       if (!res.ok) throw new Error("No se pudo leer el archivo de análisis.");
       render(await res.json());
+      updateReportLinks();
       $("status").hidden = true;
     } catch (e) { setStatus(e.message, true); }
   }
+
+  function updateReportLinks() {
+    const csv = $("csv").value;
+    if (!csv) return;
+    const q = $("cliente").value.trim() ? "cliente=" + encodeURIComponent($("cliente").value.trim()) : "";
+    const base = "/informe/" + encodeURIComponent(csv);
+    $("rep-view").href = base + (q ? "?" + q : "");
+    $("rep-dl").href = base + "?descargar=1" + (q ? "&" + q : "");
+  }
+  $("cliente").addEventListener("input", updateReportLinks);
 
   let csvs = [];
   const stemOf = (n) => n.replace(/\.csv$/i, "");

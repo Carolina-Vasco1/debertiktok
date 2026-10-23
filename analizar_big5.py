@@ -40,6 +40,10 @@ Reglas estrictas:
   de confianza. Con pocos textos la confianza debe ser baja; no inventes.
 - Esto es una impresión sobre contenido público, no un diagnóstico clínico ni una
   descripción del estado mental real de la persona. No hagas diagnósticos.
+- los resultados de los 5 razgos debe dar un total del 100 por ciento con la suma de los 5 
+- "recomendaciones": de 3 a 5 sugerencias prácticas de comunicación para la cuenta
+  (tono, temas, formato), basadas solo en los textos recibidos. Nada sobre la vida
+  privada ni la salud de la persona.
 - Responde en español y SOLO con JSON válido con esta estructura exacta:
 {
   "confianza_global": "baja|media|alta",
@@ -57,6 +61,7 @@ Reglas estrictas:
   },
   "reaccion_de_la_audiencia": {"tono": "...", "resumen": "..."},
   "conclusion": "Párrafo breve sobre cómo se percibe que se expresa la persona en este contenido, con cautela.",
+  "recomendaciones": [{"titulo": "...", "detalle": "..."}],
   "limitaciones": ["..."]
 }"""
 
